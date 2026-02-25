@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test CRM - Embeddable Framework</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .crm-section {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            background: #f9f9f9;
+        }
+        .iframe-container {
+            border: 2px solid #007bff;
+            margin: 20px 0;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .log {
+            background: #f0f0f0;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .call-status {
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .call-status.active {
+            display: block;
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+        .call-status.connected {
+            display: block;
+            background: #d4edda;
+            border-color: #28a745;
+        }
+        .call-status.disconnected {
+            display: block;
+            background: #f8d7da;
+            border-color: #dc3545;
+        }
+        .call-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .call-info-item {
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .call-info-item strong {
+            display: block;
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .status-badge.contacting {
+            background: #ffc107;
+            color: #000;
+        }
+        .status-badge.dialing {
+            background: #17a2b8;
+            color: #fff;
+        }
+        .status-badge.connected {
+            background: #28a745;
+            color: #fff;
+        }
+        .status-badge.disconnected {
+            background: #dc3545;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test CRM - Embeddable Framework Integration</h1>
+    <div class="crm-section">
+        <h2>Customer Record</h2>
+        <p><strong>Name:</strong> John Doe</p>
+        <p><strong>Phone:</strong> 555-1234</p>
+        <p><strong>Email:</strong> john@example.com</p>
+        <button onclick="makeCall()">Call Customer</button>
+        <button onclick="testMessage()">Test PostMessage</button>
+    </div>
+    <div id="callStatus" class="call-status">
+        <h3>Call Status <span id="statusBadge" class="status-badge"></span></h3>
+        <div class="call-info">
+            <div class="call-info-item">
+                <strong>Caller Name:</strong>
+                <span id="callerName">-</span>
+            </div>
+            <div class="call-info-item">
+                <strong>Phone Number:</strong>
+                <span id="callerPhone">-</span>
+            </div>
+            <div class="call-info-item">
+                <strong>Call State:</strong>
+                <span id="callState">-</span>
+            </div>
+            <div class="call-info-item">
+                <strong>Call Duration:</strong>
+                <span id="callDuration">00:00</span>
+            </div>
+            <div class="call-info-item">
+                <strong>Direction:</strong>
+                <span id="callDirection">-</span>
+            </div>
+            <div class="call-info-item">
+                <strong>Interaction ID:</strong>
+                <span id="interactionId" style="font-size: 11px;">-</span>
+            </div>
+        </div>
+    </div>
+    <div class="iframe-container">
+        <h2>Genesys Cloud Phone Interface (Embedded)</h2>
+        <iframe id="genesysFrame" 
+                src="https://apps.usw2.pure.cloud/crm/index.html?crm=embeddableframework&crm_domain=http://localhost:8000"
+                allow="camera *; microphone *">
+        </iframe>
+    </div>
+    <div class="crm-section">
+        <h2>Message Log</h2>
+        <div id="log" class="log"></div>
+    </div>
+    <script>
+        const iframe = document.getElementById('genesysFrame');
+        const log = document.getElementById('log');
+        const crmDomain = window.location.origin; // e.g., http://localhost:8000
+        // Call status tracking
+        let currentCall = null;
+        let callStartTime = null;
+        let callDurationInterval = null;
+        function logMessage(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            entry.textContent = `[${timestamp}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+        function updateCallStatus(message) {
+            const callStatus = document.getElementById('callStatus');
+            const statusBadge = document.getElementById('statusBadge');
+            const callerName = document.getElementById('callerName');
+            const callerPhone = document.getElementById('callerPhone');
+            const callState = document.getElementById('callState');
+            const callDuration = document.getElementById('callDuration');
+            const callDirection = document.getElementById('callDirection');
+            const interactionId = document.getElementById('interactionId');
+            if (!message || !message.data) return;
+            const data = message.data;
+            const category = message.category;
+            // Update interaction ID
+            if (data.id) {
+                interactionId.textContent = data.id.substring(0, 20) + '...';
+                currentCall = data.id;
+            }
+            // Handle different call events
+            if (category === 'add' || category === 'change') {
+                const newData = category === 'change' && data.new ? data.new : data;
+                // Update call state
+                if (newData.state) {
+                    callState.textContent = newData.state;
+                    statusBadge.textContent = newData.state;
+                    statusBadge.className = 'status-badge ' + newData.state.toLowerCase();
+                    // Update call status class
+                    callStatus.className = 'call-status';
+                    if (newData.state === 'CONTACTING' || newData.state === 'DIALING') {
+                        callStatus.classList.add('active');
+                        if (!callStartTime) {
+                            callStartTime = new Date(newData.startTime || Date.now());
+                            startCallTimer();
+                        }
+                    } else if (newData.state === 'CONNECTED' || newData.isConnected) {
+                        callStatus.classList.add('connected');
+                    } else if (newData.state === 'DISCONNECTED' || newData.isDisconnected) {
+                        callStatus.classList.add('disconnected');
+                        stopCallTimer();
+                    }
+                }
+                // Update caller information
+                if (newData.name || newData.remoteName) {
+                    callerName.textContent = newData.name || newData.remoteName || '-';
+                }
+                if (newData.phone || newData.displayAddress || newData.calledNumber) {
+                    callerPhone.textContent = newData.phone || newData.displayAddress || newData.calledNumber || '-';
+                }
+                if (newData.direction) {
+                    callDirection.textContent = newData.direction;
+                }
+            } else if (category === 'disconnect' || category === 'deallocate') {
+                callStatus.classList.add('disconnected');
+                statusBadge.textContent = 'DISCONNECTED';
+                statusBadge.className = 'status-badge disconnected';
+                callState.textContent = 'DISCONNECTED';
+                stopCallTimer();
+                // Hide after 5 seconds
+                setTimeout(() => {
+                    callStatus.style.display = 'none';
+                    currentCall = null;
+                    callStartTime = null;
+                }, 5000);
+            }
+        }
+        function startCallTimer() {
+            if (callDurationInterval) clearInterval(callDurationInterval);
+            callDurationInterval = setInterval(() => {
+                if (callStartTime) {
+                    const elapsed = Math.floor((Date.now() - new Date(callStartTime)) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('callDuration').textContent = 
+                        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                }
+            }, 1000);
+        }
+        function stopCallTimer() {
+            if (callDurationInterval) {
+                clearInterval(callDurationInterval);
+                callDurationInterval = null;
+            }
+        }
+        // Listen for messages from iframe
+        window.addEventListener('message', function(event) {
+            // Security: Validate origin - REPLACE with your Genesys Cloud region URL
+            const genesysOrigin = 'https://apps.usw2.pure.cloud'; // e.g., 'https://apps.mypurecloud.com'
+            if (event.origin !== genesysOrigin) {
+                logMessage(`Rejected message from untrusted origin: ${event.origin}`, 'error');
+                return;
+            }
+            logMessage(`Received from iframe: ${JSON.stringify(event.data)}`, 'success');
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'interactionSubscription') {
+                    logMessage(`Incoming call event: ${message.category}`, 'success');
+                    updateCallStatus(message);
+                }
+            } catch (e) {
+                // Not JSON, that's okay
+            }
+        });
+        // Send message to iframe (make call)
+        function makeCall() {
+            // Check if iframe is ready
+            if (!iframe.contentWindow) {
+                logMessage('Error: Iframe not ready yet. Wait for it to load.', 'error');
+                return;
+            }
+            const message = {
+                type: 'clickToDial',
+                data: {
+                    number: '555-1234',
+                    autoPlace: true
+                }
+            };
+            // Send to iframe - REPLACE with your Genesys Cloud region URL
+            const genesysOrigin = 'https://apps.YOUR_REGION_HERE'; // e.g., 'https://apps.mypurecloud.com'
+            iframe.contentWindow.postMessage(JSON.stringify(message), genesysOrigin);
+            logMessage(`Sent to iframe: ${JSON.stringify(message)}`, 'info');
+            console.log('PostMessage sent:', message, 'to origin:', genesysOrigin);
+        }
+        // Test message function
+        function testMessage() {
+            // Check if iframe is ready
+            if (!iframe.contentWindow) {
+                logMessage('Error: Iframe not ready yet. Wait for it to load.', 'error');
+                return;
+            }
+            const message = {
+                type: 'test',
+                data: { message: 'Hello from CRM!' }
+            };
+            // Send to iframe - REPLACE with your Genesys Cloud region URL
+            const genesysOrigin = 'https://apps.YOUR_REGION_HERE'; // e.g., 'https://apps.mypurecloud.com'
+            iframe.contentWindow.postMessage(JSON.stringify(message), genesysOrigin);
+            logMessage(`Sent test message: ${JSON.stringify(message)}`, 'info');
+            console.log('PostMessage sent:', message, 'to origin:', genesysOrigin);
+        }
+        // Log when iframe loads
+        iframe.addEventListener('load', function() {
+            logMessage('Iframe loaded successfully', 'success');
+            logMessage('Iframe URL: ' + iframe.src, 'info');
+            logMessage('CRM Domain (parent origin): ' + crmDomain, 'info');
+            logMessage('Waiting for framework.js to initialize...', 'info');
+            // Wait longer for framework.js to initialize before sending messages
+            setTimeout(function() {
+                logMessage('Ready to send messages. Click "Call Customer" or "Test PostMessage" buttons.', 'success');
+            }, 3000);
+        });
+        logMessage('Test CRM page loaded. Waiting for iframe...', 'info');
+        logMessage('CRM Domain (parent origin): ' + crmDomain, 'info');
+        logMessage('Check browser console (F12) for errors in the iframe', 'info');
+        logMessage('Open iframe console: F12 → Console → Select iframe context from dropdown', 'info');
+    </script>
+</body>
+</html>
