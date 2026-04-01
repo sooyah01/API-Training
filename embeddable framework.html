@@ -1,0 +1,149 @@
+
+
+var contactSearchCallback;
+
+window.Framework = {
+    config: {
+        name:"Example LatamPSSAE-Local",
+        clientIds: {
+            'mypurecloud.com': '4bb5f6ff-1a28-4ee7-8582-c223fe1088e5',
+            'mypurecloud.ie': '',
+            'mypurecloud.com.au': '',
+            'mypurecloud.jp': '',
+			'sae1.pure.cloud': 'c0bababa-bcb0-4875-9893-cfd3437cecb8'
+        },
+        customInteractionAttributes: ['bilheteGEO'],
+        settings: {
+            embedWebRTCByDefault: false,
+            hideWebRTCPopUpOption: true,
+            enableCallLogs: true,
+            enableTransferContext: true,
+			dedicatedLoginWindow: true,
+            hideCallLogSubject: true,
+            hideCallLogContact: false,
+            hideCallLogRelation: false,
+			enableCallHistory: true,
+			embeddedInteractionWindow: false,
+			
+            searchTargets: ['people', 'queues', 'frameworkcontacts', 'externalContacts'],
+			//callControls: ["pickup","transfer", "mute"],
+            theme: {
+				primary: "#FF0000",
+				text: "#DAD5DD",
+            }
+        },
+		getUserLanguage: function (callback) {
+			callback("pt-BR");
+		},
+    },
+
+    initialSetup: function () {
+		
+		console.log("***********  initialSetup 2 ****************");
+		
+		window.PureCloud.User.getAuthToken(function (token) {
+			console.log("<<<<<  User.getAuthToken   >>>>>");
+			console.log("TOKEN: ", token);
+			window.parent.postMessage(JSON.stringify({type:"authToken", data:{authToken:token}}) , "*");
+		})
+        window.PureCloud.subscribe([
+            {
+                type: 'Interaction', 
+                callback: function (category, interaction) {
+                    window.parent.postMessage(JSON.stringify({type:"interactionSubscription", data:{category:category, interaction:interaction}}) , "*");
+                }  
+            },
+            {
+                type: 'UserAction', 
+                callback: function (category, data) {
+                    window.parent.postMessage(JSON.stringify({type:"userActionSubscription", data:{category:category, data:data}}) , "*");
+                }  
+            },
+            {
+                type: 'Notification', 
+                callback: function (category, data) {
+                    window.parent.postMessage(JSON.stringify({type:"notificationSubscription", data:{category:category, data:data}}) , "*");
+                }  
+            }
+        ]);
+
+        window.addEventListener("message", function(event) {
+            try {
+                var message = JSON.parse(event.data);
+                if(message){
+                    if(message.type == "clickToDial"){
+                        window.PureCloud.clickToDial(message.data);
+                    } else if(message.type == "addAssociation"){
+                        window.PureCloud.addAssociation(message.data);
+                    }else if(message.type == "addAttribute"){
+                        window.PureCloud.addCustomAttributes(message.data);
+                    }else if(message.type == "addTransferContext"){
+                        window.PureCloud.addTransferContext(message.data);
+                    }else if(message.type == "sendContactSearch"){
+                        //if(contactSearchCallback) {
+                            contactSearchCallback(message.data);
+                        //}
+                    }else if(message.type == "updateUserStatus"){
+                        window.PureCloud.User.updateStatus(message.data);
+                    }else if(message.type == "updateInteractionState"){
+                        window.PureCloud.Interaction.updateState(message.data);
+                    }else if(message.type == "setView"){
+                        window.PureCloud.User.setView(message.data);
+                    }else if(message.type == "updateAudioConfiguration"){
+                        window.PureCloud.User.Notification.setAudioConfiguration(message.data);
+                    }else if(message.type == "sendCustomNotification"){
+                        window.PureCloud.User.Notification.notifyUser(message.data);
+                    }else if(message.type == "logout"){
+                        window.PureCloud.User.logout();
+						
+                    } else if(message.type == "getTranscript") {
+                        console.log("valor do evento gettranscript" + event.data);
+                        window.PureCloud.Interaction.Message.getTranscript ({
+                            interactionId: message.data.interactionId,
+                            callback: function (data) {
+                                var dataFormat = JSON.stringify(data);
+                                console.log('>>> getTranscript - Received:' + dataFormat);
+                                window.parent.postMessage(JSON.stringify({type:"transcript", data:data}) , "*");
+                            }
+                        });
+                    }  
+
+                }
+            } catch {
+                //ignore if you can not parse the payload into JSON
+            }
+        });		
+    },
+    screenPop: function (searchString, interaction) {
+        window.parent.postMessage(JSON.stringify({type:"screenPop", data:{searchString:searchString, interactionId:interaction}}) , "*");
+    },
+    processCallLog: function (callLog, interaction, eventName, onSuccess, onFailure) {
+        window.parent.postMessage(JSON.stringify({type:"processCallLog" , data:{callLog:callLog, interactionId:interaction, eventName:eventName}}) , "*");
+        var success = true;
+        if (success) {
+            onSuccess({
+                id: callLog.id || Date.now()
+            });
+        } else {
+            onFailure();
+        }
+    },
+    openCallLog: function(callLog, interaction){
+        window.parent.postMessage(JSON.stringify({type:"openCallLog" , data:{callLog:callLog, interaction:interaction}}) , "*");
+    },
+    contactSearch: function(searchString, onSuccess, onFailure) {
+        contactSearchCallback = onSuccess;
+        window.parent.postMessage(JSON.stringify({type:"contactSearch" , data:{searchString:searchString}}) , "*");
+		
+		onSuccess ([{
+			type: "external",
+			name: "Weather Line",
+			phone: [{
+				number: "(317) 222-2222",
+				label: "Cell"
+			}],
+			attributes: {example_urlpop: "url"}
+		}]);
+    }
+};
+        
